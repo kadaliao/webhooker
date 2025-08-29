@@ -1,18 +1,33 @@
 from flask import Flask, request, jsonify, render_template_string
 import json
-import logging
+import requests
 from datetime import datetime
 
 app = Flask(__name__)
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
 
-@app.route('/')
+def send_notification(message: str) -> bool:
+    """
+    发送通知消息到指定API
+
+    Args:
+        message (str): 要发送的消息内容
+
+    Returns:
+        bool: 发送成功返回True，失败返回False
+    """
+    api_url = f"https://api.day.app/tDr56uFdtFWFHpWmUaKtAZ/LSP-Warning/{message}"
+    try:
+        response = requests.get(api_url)
+        print(f"已发送通知到API: {api_url}")
+        print(f"API响应状态: {response.status_code}")
+        return True
+    except Exception as api_error:
+        print(f"发送API请求失败: {str(api_error)}")
+        return False
+
+
+@app.route("/")
 def index():
     html_content = """
 <!DOCTYPE html>
@@ -284,65 +299,78 @@ def index():
     """
     return render_template_string(html_content)
 
-@app.route('/webhook', methods=['POST'])
+
+@app.route("/webhook", methods=["POST"])
 def handle_webhook():
     try:
         # 获取请求时间戳
-        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
         # 获取客户端IP
-        client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
-        
+        client_ip = request.headers.get("X-Forwarded-For", request.remote_addr)
+
         # 记录基本请求信息
-        logger.info("=" * 50)
-        logger.info(f"Webhook接收时间: {timestamp}")
-        logger.info(f"客户端IP: {client_ip}")
-        logger.info(f"请求方法: {request.method}")
-        logger.info(f"请求URL: {request.url}")
-        
+        print("=" * 50)
+        print(f"Webhook接收时间: {timestamp}")
+        print(f"客户端IP: {client_ip}")
+        print(f"请求方法: {request.method}")
+        print(f"请求URL: {request.url}")
+
         # 记录请求头
-        logger.info("请求头:")
+        print("请求头:")
         for header, value in request.headers:
-            logger.info(f"  {header}: {value}")
-        
+            print(f"{header}: {value}")
+
         # 获取请求体
         try:
             if request.is_json:
                 data = request.get_json()
-                logger.info("JSON数据:")
-                logger.info(json.dumps(data, indent=2, ensure_ascii=False))
+                print("JSON数据:")
+                print(json.dumps(data, indent=2, ensure_ascii=False))
+
+                message = data.get("data", {}).get("message")
+                if message:
+                    send_notification(message)
+                else:
+                    print("JSON数据中没有message字段")
             else:
                 raw_data = request.get_data(as_text=True)
-                logger.info("原始数据:")
-                logger.info(raw_data)
+                print("原始数据:")
+                print(raw_data)
         except Exception as e:
-            logger.error(f"数据解析错误: {str(e)}")
+            print(f"数据解析错误: {str(e)}")
             raw_data = request.get_data(as_text=True)
-            logger.info(f"原始数据: {raw_data}")
-        
-        logger.info("=" * 50)
-        
-        # 返回成功响应
-        return jsonify({
-            "status": "success",
-            "message": "Webhook received successfully",
-            "timestamp": timestamp
-        }), 200
-        
-    except Exception as e:
-        logger.error(f"处理webhook时发生错误: {str(e)}")
-        return jsonify({
-            "status": "error",
-            "message": "Internal server error"
-        }), 500
+            print(f"原始数据: {raw_data}")
 
-@app.route('/webhook', methods=['GET'])
+        print("=" * 50)
+
+        # 返回成功响应
+        return (
+            jsonify(
+                {
+                    "status": "success",
+                    "message": "Webhook received successfully",
+                    "timestamp": timestamp,
+                }
+            ),
+            200,
+        )
+
+    except Exception as e:
+        print(f"处理webhook时发生错误: {str(e)}")
+        return jsonify({"status": "error", "message": "Internal server error"}), 500
+
+
+@app.route("/webhook", methods=["GET"])
 def webhook_info():
-    return jsonify({
-        "message": "Webhook endpoint is ready",
-        "methods": ["POST"],
-        "endpoint": "/webhook"
-    })
+    return jsonify(
+        {
+            "message": "Webhook endpoint is ready",
+            "methods": ["POST"],
+            "endpoint": "/webhook",
+        }
+    )
+
 
 if __name__ == "__main__":
     app.run(debug=True, port=9000)
